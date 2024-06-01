@@ -21,12 +21,12 @@ def repair_mts_file(reference_file, corrupted_file, output_dir):
 
     repaired_data = reference_data + corrupted_data[768:]
 
-    filename = os.path.splitext(os.path.basename(corrupted_file))[0]  # Get base filename without extension
+    # Remove additional extensions
+    filename = os.path.splitext(os.path.basename(corrupted_file))[0]
+    if filename.lower().endswith('.mts'):
+        filename = os.path.splitext(filename)[0]
+
     os.makedirs(output_dir, exist_ok=True)
-
-    # Remove any additional extensions from the filename
-    filename = os.path.splitext(filename)[0]
-
     repaired_file_path = os.path.join(output_dir, filename + '.MTS')
     with open(repaired_file_path, 'wb') as repaired_file:
         repaired_file.write(repaired_data)
@@ -42,12 +42,12 @@ def repair_mxf_file(reference_file, corrupted_file, output_dir):
 
     repaired_data = reference_data + corrupted_data[524308:]
 
-    filename = os.path.splitext(os.path.basename(corrupted_file))[0]  # Get base filename without extension
+    # Remove additional extensions
+    filename = os.path.splitext(os.path.basename(corrupted_file))[0]
+    if filename.lower().endswith('.mxf'):
+        filename = os.path.splitext(filename)[0]
+
     os.makedirs(output_dir, exist_ok=True)
-
-    # Remove any additional extensions from the filename
-    filename = os.path.splitext(filename)[0]
-
     repaired_file_path = os.path.join(output_dir, filename + '.MXF')
     with open(repaired_file_path, 'wb') as repaired_file:
         repaired_file.write(repaired_data)
@@ -87,18 +87,10 @@ class VideoRepairApp(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Video Repair Tool")
+        self.setWindowTitle("XDCAM Repair Tool")
         self.setGeometry(100, 100, 400, 400)
 
         layout = QVBoxLayout()
-
-        self.file_type_label = QLabel("Select File Type:")
-        self.file_type_edit = QLineEdit()
-        self.file_type_edit.setReadOnly(True)
-
-        self.file_type_browse_button = QPushButton("Browse", self)
-        self.file_type_browse_button.setObjectName("browseButton")
-        self.file_type_browse_button.clicked.connect(self.browse_file_type)
 
         self.reference_label = QLabel("Reference File:")
         self.reference_path_edit = QLineEdit()
@@ -106,11 +98,11 @@ class VideoRepairApp(QWidget):
         self.reference_browse_button.setObjectName("browseButton")
         self.reference_browse_button.clicked.connect(self.browse_reference_file)
 
-        self.corrupted_label = QLabel("Corrupted Folder:")
-        self.corrupted_path_edit = QLineEdit()
-        self.corrupted_browse_button = QPushButton("Browse", self)
-        self.corrupted_browse_button.setObjectName("browseButton")
-        self.corrupted_browse_button.clicked.connect(self.browse_corrupted_folder)
+        self.corrupt_label = QLabel("Corrupted Folder:")
+        self.corrupt_path_edit = QLineEdit()
+        self.corrupt_browse_button = QPushButton("Browse", self)
+        self.corrupt_browse_button.setObjectName("browseButton")
+        self.corrupt_browse_button.clicked.connect(self.browse_corrupt_folder)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
@@ -123,15 +115,12 @@ class VideoRepairApp(QWidget):
         self.repair_button.setObjectName("blueButton")
         self.repair_button.clicked.connect(self.repair_all_files)
 
-        layout.addWidget(self.file_type_label)
-        layout.addWidget(self.file_type_edit)
-        layout.addWidget(self.file_type_browse_button)
         layout.addWidget(self.reference_label)
         layout.addWidget(self.reference_path_edit)
         layout.addWidget(self.reference_browse_button)
-        layout.addWidget(self.corrupted_label)
-        layout.addWidget(self.corrupted_path_edit)
-        layout.addWidget(self.corrupted_browse_button)
+        layout.addWidget(self.corrupt_label)
+        layout.addWidget(self.corrupt_path_edit)
+        layout.addWidget(self.corrupt_browse_button)
         layout.addWidget(self.progress_bar)
         layout.addWidget(self.log_box)
         layout.addWidget(self.repair_button)
@@ -154,40 +143,46 @@ class VideoRepairApp(QWidget):
 
         self.log_updated.connect(self.update_log)
 
-    def browse_file_type(self):
-        file_type, _ = QFileDialog.getOpenFileName(self, "Select File Type (MTS or MXF)", "", "MTS Files (*.MTS);;MXF Files (*.MXF)")
-        if file_type:
-            self.file_type_edit.setText(file_type.split('.')[-1].upper())
-
     def browse_reference_file(self):
         reference_file, _ = QFileDialog.getOpenFileName(self, "Select Reference File", "", "All Files (*.*)")
         if reference_file:
             self.reference_path_edit.setText(reference_file)
 
-    def browse_corrupted_folder(self):
-        corrupted_folder = QFileDialog.getExistingDirectory(self, "Select Corrupted Folder")
-        if corrupted_folder:
-            self.corrupted_path_edit.setText(corrupted_folder)
+    def browse_corrupt_folder(self):
+        corrupt_folder = QFileDialog.getExistingDirectory(self, "Select Corrupted Folder")
+        if corrupt_folder:
+            self.corrupt_path_edit.setText(corrupt_folder)
 
     def repair_all_files(self):
         reference_file_path = self.reference_path_edit.text()
-        corrupted_folder_path = self.corrupted_path_edit.text()
-        file_type = self.file_type_edit.text().upper()
+        corrupt_folder_path = self.corrupt_path_edit.text()
 
         if not os.path.exists(reference_file_path):
             self.show_message("Error", "Reference file does not exist.")
             return
-        if not os.path.exists(corrupted_folder_path):
-            self.show_message("Error", "Corrupted folder does not exist.")
+        if not os.path.isdir(corrupt_folder_path):
+            self.show_message("Error", "Corrupted folder path does not exist.")
             return
+
+        # Detect file type based on the reference file's extension
+        _, ext = os.path.splitext(reference_file_path)
+        file_type = ext[1:].upper()
+
         if file_type not in ['MTS', 'MXF']:
-            self.show_message("Error", "Invalid file type. Must be MTS or MXF.")
+            self.show_message("Error", "Invalid reference file type. Must be MTS or MXF.")
             return
 
-        encrypted_files = glob.glob(os.path.join(corrupted_folder_path, f'*.{file_type}.*'))
-        output_dir = os.path.join(os.path.dirname(corrupted_folder_path), 'Repaired')
+        output_dir = os.path.join(os.path.dirname(reference_file_path), "Repaired")
 
-        self.worker = VideoRepairWorker(reference_file_path, encrypted_files, output_dir, file_type)
+        # Search for corrupted files with the specified type and additional extensions
+        search_pattern = os.path.join(corrupt_folder_path, f"*.{file_type}.*")
+        corrupted_files = glob.glob(search_pattern)
+
+        if not corrupted_files:
+            self.show_message("Error", f"No corrupted files with extension .{file_type}.* found.")
+            return
+
+        self.worker = VideoRepairWorker(reference_file_path, corrupted_files, output_dir, file_type)
         self.worker.progress_updated.connect(self.update_progress)
         self.worker.log_updated.connect(self.update_log)
         self.worker.repair_finished.connect(self.repair_finished)
